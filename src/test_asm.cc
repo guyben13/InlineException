@@ -27,8 +27,8 @@ int foo() {
 using MyTry = InlineTry<A, B, void>;
 
 int bar() {
-  auto res = MyTry::wrap(&foo);
-  return res.index();
+  auto res = MyTry::call(&foo);
+  return res.has_value();
 }
 
 int dead() {
@@ -71,30 +71,30 @@ int main() {
   constexpr size_t N = 1'000'000;
   {
     TimePoint start = now();
-		int count = 0;
-		for (size_t i = 0; i < N; ++i) {
-			count += bar();
-		}
+    int count = 0;
+    for (size_t i = 0; i < N; ++i) {
+      count += bar();
+    }
     double time = duration(start, now());
-		std::cerr << "count= " << count << " time= " << time << '\n';
+    std::cerr << "count= " << count << " time= " << time << '\n';
   }
   {
     TimePoint start = now();
-		int count = 0;
-		for (size_t i = 0; i < N; ++i) {
-			count += dead();
-		}
+    int count = 0;
+    for (size_t i = 0; i < N; ++i) {
+      count += dead();
+    }
     double time = duration(start, now());
-		std::cerr << "count= " << count << " time= " << time << '\n';
+    std::cerr << "count= " << count << " time= " << time << '\n';
   }
   {
     TimePoint start = now();
-		int count = 0;
-		for (size_t i = 0; i < N; ++i) {
-			count += face();
-		}
+    int count = 0;
+    for (size_t i = 0; i < N; ++i) {
+      count += face();
+    }
     double time = duration(start, now());
-		std::cerr << "count= " << count << " time= " << time << '\n';
+    std::cerr << "count= " << count << " time= " << time << '\n';
   }
   return 0;
 }

@@ -4,3 +4,5 @@ AlignAfterOpenBracket: AlwaysBreak
 
 BinPackArguments: false
 BinPackParameters: false
+
+IndentRequires: true
