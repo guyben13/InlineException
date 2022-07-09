@@ -1,17 +1,16 @@
 #pragma once
 
 #include <exception>
+#include <functional>
 #include <string>
 #include <tuple>
 #include <typeinfo>
 #include <variant>
-#include <functional>
 
 namespace inline_try {
 
 struct StdExceptionWrapper {
-  StdExceptionWrapper(const std::exception& e)
-      : m_msg(e.what()), m_type(&typeid(e)) {}
+  StdExceptionWrapper(const std::exception& e) : m_msg(e.what()), m_type(&typeid(e)) {}
   const char* what() const noexcept { return m_msg.c_str(); }
   const std::type_info& type() const noexcept { return *m_type; }
 
@@ -52,15 +51,11 @@ constexpr bool ARE_EXCEPTIONS_OK<E, Es...> = ARE_EXCEPTIONS_OK<Es...>;
 
 template <typename T, typename... Es>
 struct ValueOrException {
-  ValueOrException(T&& t)
-      : m_variant(std::in_place_index_t<0>{}, std::forward<T>(t)) {}
+  ValueOrException(T&& t) : m_variant(std::in_place_index_t<0>{}, std::forward<T>(t)) {}
   template <size_t E_IDX, typename E>
     requires(sizeof...(Es) > 1)
   ValueOrException(std::in_place_index_t<E_IDX>, E&& e)
-      : m_variant(
-            std::in_place_index_t<1>{},
-            std::in_place_index_t<E_IDX>{},
-            std::forward<E>(e)) {}
+      : m_variant(std::in_place_index_t<1>{}, std::in_place_index_t<E_IDX>{}, std::forward<E>(e)) {}
   template <typename E>
     requires(sizeof...(Es) == 1)
   ValueOrException(std::in_place_index_t<0>, E&& e)
@@ -83,12 +78,9 @@ struct ValueOrException {
     return std::get<0>(m_variant);
   }
   T& operator*() noexcept requires(!std::is_void_v<T>) { return value(); }
-  const T& operator*() const noexcept requires(!std::is_void_v<T>) {
-    return value();
-  }
+  const T& operator*() const noexcept requires(!std::is_void_v<T>) { return value(); }
 
-  using ExceptionVariant =
-      std::variant<typename TransformException<Es>::type...>;
+  using ExceptionVariant = std::variant<typename TransformException<Es>::type...>;
   using ExceptionType = std::conditional_t<
       sizeof...(Es) == 1,
       std::variant_alternative_t<0, ExceptionVariant>,
@@ -154,7 +146,8 @@ struct InlineTry {
   }
 
   template <typename Fn>
-  static ResT<Fn> call_impl_void(Fn&& fn) noexcept requires(FINAL_CATCH_ALL) {
+    requires(FINAL_CATCH_ALL)
+  static ResT<Fn> call_impl_void(Fn&& fn) noexcept {
     constexpr size_t E_IDX = NUM_EXCEPTIONS - 1;
     try {
       if constexpr (E_IDX == 0) {
@@ -167,15 +160,21 @@ struct InlineTry {
     }
   }
 
- public : template <typename Fn>
-          static ResT<Fn>
-          call(Fn&& fn) requires(!FINAL_CATCH_ALL) {
-    return call_impl<Fn, NUM_EXCEPTIONS - 1>(std::forward<Fn>(fn));
-  }
+ public:
+  template <typename Fn>
+    requires(!FINAL_CATCH_ALL)
+  static ResT<Fn> call(Fn&& fn) { return call_impl<Fn, NUM_EXCEPTIONS - 1>(std::forward<Fn>(fn)); }
 
   template <typename Fn>
   static ResT<Fn> call(Fn&& fn) noexcept requires(FINAL_CATCH_ALL) {
     return call_impl_void<Fn>(std::forward<Fn>(fn));
+  }
+
+  template <typename Fn>
+  static auto wrap(Fn&& fn) {
+    return [fn = std::forward<Fn>(fn)]<typename... Args>(Args && ... args) {
+      return call([=]() -> decltype(fn(std::forward<Args>(args)...)) { return fn(args...); });
+    };
   }
 };
 

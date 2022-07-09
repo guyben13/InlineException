@@ -7,9 +7,7 @@ struct B {};
 
 struct C {};
 
-int& foo() {
-  static int i = 0;
-  ++i;
+int& foo(int i) {
   std::cerr << "Curr i = " << i << "\n";
   if (i == 1) {
     std::cerr << "Throwing A\n";
@@ -28,16 +26,19 @@ int& foo() {
     throw C{};
   }
   std::cerr << "Function succeeded\n";
-  return i;
+  static int res = 0;
+  return res;
 }
 
 int main() {
   using MyTry = inline_try::InlineTry<A, B, std::exception, void>;
+  auto wrapped_foo = MyTry::wrap(&foo);
+
   for (size_t i = 0; i < 10; ++i) {
-    auto res = MyTry::call(&foo);
+    auto res = wrapped_foo(i);
     if (res.has_value()) {
       std::cerr << "Value: " << res.value() << '\n';
-      res.value() += 1;
+      res.value() = i;
     } else {
       const auto& exception = res.exception();
       std::cerr << " Caught: " << exception.index() << '\n';
