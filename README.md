@@ -8,7 +8,7 @@ How does it work? Say you have a function `foo()` which uses exceptions. Say you
 
 Usually, you'd have to write something like this:
 
-```
+```cpp
 try {
   Type res = foo();
   // Do something with res
@@ -22,24 +22,58 @@ try {
 ```
 
 Now you can instead do:
-```
+```cpp
+void handle_error(ExceptionA);
+void handle_error(ExceptionB);
+void handle_error(std::monostate);
+
+
 using MyTry = InlineTry<ExceptionA, ExceptionB, void>;
-auto res_or_exception = MyTry::call(&foo);
+auto res = MyTry::call(&foo);
 if (res.has_value()) {
   // Do something with res.value()
-  // NOTE that if foo() returns a reference, then res.value() is a reference.
 } else {
-  auto exception_variant = res.exception();
-  switch (exception_variant.index()) {
-    case 0:
-      // Do whatever you wanted for ExceptionA
-      break;
-    case 1:
-      // Do whatever you wanted for ExceptionB
-      break;
-    case 2:
-      // Do whatever you wanted for (...)
-      break;
+  std::visit([](const auto& e) {handle_error(e);}, res.exception());
+  // NOTE: res.exception() returns a variant of the exception (almost)
+}
+```
+
+## Features
+
+- The assumption is that anyone using this library doesn't want exceptions. So
+a "bad" access to the `res` just aborts immediately:
+```cpp
+auto res = MyTry::call(&foo);
+res.value(); // If there was an error, this aborts the program.
+```
+
+- If the last exception type given is `void`, it adds a `catch(...)` as the
+outermost catch. In that case - `MyTry::call(&foo)` is `noexcept`.
+
+  - The `res.error()` variant will have `std::monostate` as the exception value
+  for the outermost `catch`.
+
+- If we catch a single exception - then `res.exception()` will return the
+exception instead of a `variant`.
+
+- If a function returns a reference - then `res.value()` is a reference.
+
+- If a function returns `void` - then `.value()` can't be called
+(`.has_value()` still works as expected)
+
+- You can wrap any function and call it later:
+```cpp
+using MyTry = InlineTry<Exception, void>;
+auto wrapped_foo = MyTry::wrap(&foo);
+for (...) {
+  auto res = wrapped_foo(i, j, a, b);
+  // NOTE that we `catch(...)` (we have `void` as the last exception)
+  // Hence, the call to `wrapped_foo` is no-except (the move constructor might
+  // throw though)
+  if (res) {
+    // do something with res.value()
+  } else {
+    // Handle the error in res.exception()
   }
 }
 ```
@@ -61,54 +95,15 @@ wrapper with `.what()` that returns the original exception's `.what()` and a
 
 Similar wrappers can be created and added by the user for custom exception types.
 
-```
-using MyTry = InlineTry<std::exception, void>;
-auto res_or_exception = MyTry::call(&foo);
-if (res.has_value()) {
+```cpp
+using MyTry = InlineTry<std::exception>;
+// NOTE: we're catchins a single exception, so `res.exception` is just that exception
+auto res = MyTry::call(&foo);
+if (res) {
   // Do whatever with res.value()
 } else {
-  auto exception_variant = res.exception();
-  switch (exception_variant.index()) {
-    case 0:
-      cerr << "Got exception with message" << std::get<0>(e_variant).what() << "\n";
-      cerr << "(Base type of exception was " << std::get<0>(e_variant).type().name() << ")\n";
-      break;
-    case 1:
-      cerr << "Got unknown exception\n";
-      break;
-  }
+  cerr << "Got exception with message" << res.exception().what() << "\n";
+  cerr << "(Base type of exception was " << res.exception().type().name() << ")\n";
 }
 ```
 
-## Features
-
-- The assumption is that anyone using this library doesn't want exceptions. So
-a "bad" access to the `res_or_exception` just aborts immediately:
-```
-auto res_or_exception = MyTry::call(&foo);
-res_or_exception.value(); // If there was an error, this aborts the program.
-```
-
-- If the last exception type given is `void`, it adds a `catch(...)` as the
-outermost catch. In that case - `MyTry::call(&foo)` is `noexcept`.
-
-- If we catch a single exception - then `res_or_exception.exception()` will
-return the exception instead of a `variant`.
-
-- If a function returns a reference - then `res_or_exception.value()` is a
-reference.
-
-- If a function returns `void` - then `.value()` can't be called
-(`.has_value()` still works as expected)
-
-- You can wrap any function and call it later:
-```
-using MyTry = InlineTry<std::exception, void>;
-auto wrapped_foo = MyTry::wrap(&foo);
-for (...) {
-  auto res_or_exception = wrapped_foo(i, j, a, b); // This can't throw! (as long as move constructors are no-throw)
-  if (res_or_exception) {
-    // do something with res_or_exception.value()
-  }
-}
-```
